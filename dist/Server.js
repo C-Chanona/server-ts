@@ -1,82 +1,75 @@
-import { __awaiter } from "tslib";
-import { ProgramMetadata } from "@gear-js/api";
-import { stake } from "./services/stake.js";
-import { unestake } from "./services/unestake.js";
-export class Server {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Server = void 0;
+const api_1 = require("@gear-js/api");
+const hex_1 = require("./utils/hex");
+const handler_1 = require("./services/handler");
+class Server {
     constructor(gApi) {
-        this.meta = ProgramMetadata.from(`${process.env.META}`);
+        this.meta = api_1.ProgramMetadata.from(`${process.env.META}`);
         this.messages = new Set();
         this.gApi = gApi;
-    }
-    listen() {
-        return __awaiter(this, void 0, void 0, function* () {
-            this.gApi.query.system.events((events) => {
-                events
-                    .filter(({ event }) => this.gApi.events.balances.Transfer.is(event))
-                    .forEach(({ event: { data } }) => {
-                    // console.log(data.toHuman());
-                });
-                events
-                    .filter(({ event }) => this.gApi.events.gear.UserMessageSent.is(event))
-                    .forEach(({ event: { data } }) => {
-                    //   console.log(data.toHuman());
-                });
-                // events
-                // .filter(({ event }) => this.gApi.events.balances.Withdraw.is(event))
-                // .forEach(({ event: { data } }) => {
-                //   console.log(data.toHuman());
-                // });
-            });
-        });
+        this.Handler = new handler_1.Handler(this.meta, this.gApi);
     }
     subscribeToEvent() {
-        this.gApi.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message: { id, source, destination, payload, value, details }, }, }) => {
-            let message = JSON.stringify(id.toHuman());
-            if (!this.messages.has(message)) {
-                this.messages.add(message);
-            }
-            else {
-                return;
-            }
-            if (source.toHex() == `${process.env.SOURCE}` && destination.toHex() == `${process.env.DESTINATION}`) {
-                const payloadHex = payload.toHex();
-                const payloadString = Buffer.from(payloadHex.slice(2), 'hex').toString('utf8');
-                const newString = payloadString.slice(2);
-                let payloadOject;
-                console.log("soy payloadString:", newString);
-                console.log(`Message sent from ${source.toHex()} to ${destination.toHex()}`);
-                try {
-                    payloadOject = JSON.parse(newString);
-                }
-                catch (error) {
-                    console.log(error);
-                }
+        this.gApi.gearEvents.subscribeToGearEvent('UserMessageSent', this.handleUserMessageSentEvent.bind(this));
+    }
+    handleStake(amount) {
+        this.Handler.stake(amount);
+    }
+    handleUnestake(payloadObject, user, source, id) {
+        let uParams = {
+            amount: payloadObject.amount * 1000000000000,
+            user: user,
+            source: source,
+            messageId: id
+        };
+        this.Handler.unestake(uParams);
+        // unestake(this.gApi, this.meta, uParams);
+    }
+    handleWithdraw(payload) {
+        this.Handler.withdraw(payload);
+    }
+    handleUserMessageSentEvent({ data: { message: { id, source, destination, payload, value, details } } }) {
+        console.log(id.toHuman());
+        let message = id.toHuman().toString();
+        if (!this.messages.has(message)) {
+            this.messages.add(message);
+        }
+        else {
+            return;
+        }
+        if (source.toHex() == `${process.env.SOURCE}` && destination.toHex() == `${process.env.DESTINATION}`) {
+            const payloadString = (Buffer.from(payload.toHex().slice(2), 'hex').toString('utf8')).slice(2);
+            let payloadOject = JSON.parse(payloadString);
+            console.log("soy payloadString:", payloadString);
+            console.log(`Message sent from ${source.toHex()} to ${destination.toHex()}`);
+            try {
                 if (payloadOject) {
-                    let actorId = payloadOject.source;
-                    let regex = /\[(.*?)\]/;
-                    let result = regex.exec(actorId);
-                    let arrayBytes = result[1].split(',').map(Number);
-                    let user = '0x' + arrayBytes.map(byte => byte.toString(16).padStart(2, '0')).join('');
+                    let user = hex_1.Hex.toActorId(payloadOject.source);
                     switch (payloadOject.type) {
                         case "stake":
-                            stake(this.gApi, payloadOject.value);
+                            this.handleStake(payloadOject.value);
                             break;
                         case "unestake":
-                            let voucherID = payloadOject.voucher_id;
-                            unestake(this.gApi, this.meta, voucherID, payloadOject.amount * 1000000000000, user, source, id.toHex());
+                            this.handleUnestake(payloadOject, user, source.toHex(), id.toHex());
                             break;
                         case "withdraw":
-                            console.log("withdraw: ", payloadOject.witdraw);
+                            this.handleWithdraw(payload);
                             break;
                         default:
                             console.log("ERROR ON SWITCH CASE");
-                            break;
+                            throw new Error("Error in Switch Case");
                     }
                 }
                 else {
-                    console.log("El payload no es un JSON");
+                    throw new Error("Error in payload");
                 }
             }
-        });
+            catch (error) {
+                console.log(error);
+            }
+        }
     }
 }
+exports.Server = Server;

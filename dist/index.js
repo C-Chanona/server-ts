@@ -1,15 +1,16 @@
-import { __awaiter } from "tslib";
-import { GearApi } from "@gear-js/api";
-import { config } from "dotenv";
-import { Server } from "./Server.js";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const tslib_1 = require("tslib");
+const api_1 = require("@gear-js/api");
+const dotenv_1 = require("dotenv");
+const Server_1 = require("./Server");
 function main() {
-    return __awaiter(this, void 0, void 0, function* () {
-        config();
-        const gApi = yield GearApi.create({
+    return tslib_1.__awaiter(this, void 0, void 0, function* () {
+        (0, dotenv_1.config)();
+        const gApi = yield api_1.GearApi.create({
             providerAddress: "wss://testnet.vara.network",
         });
-        let server = new Server(gApi);
-        server.listen();
+        let server = new Server_1.Server(gApi);
         server.subscribeToEvent();
     });
 }
